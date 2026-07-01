@@ -192,11 +192,11 @@ class OpencodianChatView extends ItemView {
       prompt = `(Current note: ${contextFile.path})\n\n${text}`;
     }
 
-    const args = this.plugin.settings.extraArgs
+    const extra = this.plugin.settings.extraArgs
       ? this.plugin.settings.extraArgs.split(/\s+/).filter(Boolean)
       : [];
 
-    args.push(prompt);
+    const args = ["run", ...extra, "--", prompt];
 
     let output = "";
     let errorOutput = "";

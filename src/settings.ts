@@ -2,19 +2,13 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import OpencodianPlugin from "./main";
 
 export interface OpencodianSettings {
-  apiEndpoint: string;
-  apiKey: string;
-  model: string;
-  systemPrompt: string;
-  temperature: number;
+  opencodePath: string;
+  extraArgs: string;
 }
 
 export const DEFAULT_SETTINGS: OpencodianSettings = {
-  apiEndpoint: "http://127.0.0.1:1234/v1",
-  apiKey: "",
-  model: "",
-  systemPrompt: "You are a helpful AI assistant integrated in Obsidian. The user's vault root is available as context. Be concise and direct.",
-  temperature: 0.7,
+  opencodePath: "opencode",
+  extraArgs: "",
 };
 
 export class OpencodianSettingTab extends PluginSettingTab {
@@ -30,67 +24,27 @@ export class OpencodianSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("API Endpoint")
-      .setDesc("OpenAI-compatible chat completions URL (e.g. http://127.0.0.1:1234/v1 for LM Studio)")
+      .setName("Opencode CLI path")
+      .setDesc("Path to the opencode binary (e.g. /usr/local/bin/opencode, or just 'opencode' if in PATH)")
       .addText((text) =>
         text
-          .setPlaceholder("http://127.0.0.1:1234/v1")
-          .setValue(this.plugin.settings.apiEndpoint)
+          .setPlaceholder("opencode")
+          .setValue(this.plugin.settings.opencodePath)
           .onChange(async (value) => {
-            this.plugin.settings.apiEndpoint = value.trim();
+            this.plugin.settings.opencodePath = value.trim() || "opencode";
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
-      .setName("API Key (optional)")
-      .setDesc("Only if your endpoint requires authentication")
+      .setName("Extra CLI arguments")
+      .setDesc("Optional flags passed to opencode (e.g. --model claude-sonnet-4-20250514)")
       .addText((text) =>
         text
-          .setPlaceholder("sk-...")
-          .setValue(this.plugin.settings.apiKey)
+          .setPlaceholder("--model claude-sonnet-4-20250514")
+          .setValue(this.plugin.settings.extraArgs)
           .onChange(async (value) => {
-            this.plugin.settings.apiKey = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Model")
-      .setDesc("Model name (leave empty for endpoint default)")
-      .addText((text) =>
-        text
-          .setPlaceholder("e.g. deepseek-chat, gpt-4, qwen2.5")
-          .setValue(this.plugin.settings.model)
-          .onChange(async (value) => {
-            this.plugin.settings.model = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Temperature")
-      .setDesc("Higher = more creative, lower = more focused (0-2)")
-      .addSlider((slider) =>
-        slider
-          .setLimits(0, 2, 0.1)
-          .setValue(this.plugin.settings.temperature)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.temperature = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("System prompt")
-      .setDesc("Custom system prompt sent with every message")
-      .addTextArea((text) =>
-        text
-          .setPlaceholder("You are a helpful AI assistant...")
-          .setValue(this.plugin.settings.systemPrompt)
-          .onChange(async (value) => {
-            this.plugin.settings.systemPrompt = value;
+            this.plugin.settings.extraArgs = value.trim();
             await this.plugin.saveSettings();
           })
       );

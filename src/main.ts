@@ -1,12 +1,8 @@
 import { ItemView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { OpencodianSettings, DEFAULT_SETTINGS, OpencodianSettingTab } from "./settings";
+import { spawn, ChildProcess } from "child_process";
 
-const VIEW_TYPE_DEEPSEEKIAN = "opencodian-chat-view";
-
-interface ChatMessage {
-  role: "user" | "assistant" | "system";
-  content: string;
-}
+const VIEW_TYPE_OPENCODIAN = "opencodian-chat-view";
 
 export default class OpencodianPlugin extends Plugin {
   settings: OpencodianSettings = DEFAULT_SETTINGS;
@@ -17,7 +13,7 @@ export default class OpencodianPlugin extends Plugin {
     this.addSettingTab(new OpencodianSettingTab(this.app, this));
 
     this.registerView(
-      VIEW_TYPE_DEEPSEEKIAN,
+      VIEW_TYPE_OPENCODIAN,
       (leaf) => new OpencodianChatView(leaf, this)
     );
 
@@ -34,12 +30,12 @@ export default class OpencodianPlugin extends Plugin {
 
   async activateView() {
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_DEEPSEEKIAN).first();
+    let leaf = workspace.getLeavesOfType(VIEW_TYPE_OPENCODIAN).first();
 
     if (!leaf) {
       leaf = workspace.getRightLeaf(false);
       if (!leaf) return;
-      await leaf.setViewState({ type: VIEW_TYPE_DEEPSEEKIAN, active: true });
+      await leaf.setViewState({ type: VIEW_TYPE_OPENCODIAN, active: true });
     }
 
     workspace.revealLeaf(leaf);
@@ -52,16 +48,20 @@ export default class OpencodianPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
+
+  getVaultPath(): string {
+    return (this.app.vault.adapter as any).getBasePath?.() || "";
+  }
 }
 
 class OpencodianChatView extends ItemView {
   plugin: OpencodianPlugin;
-  messages: ChatMessage[] = [];
+  messages: { role: string; content: string }[] = [];
   messageContainerEl: HTMLElement;
   inputEl: HTMLTextAreaElement;
   sendBtnEl: HTMLElement;
   contextLabelEl: HTMLElement;
-  abortController: AbortController | null = null;
+  proc: ChildProcess | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: OpencodianPlugin) {
     super(leaf);
@@ -69,7 +69,7 @@ class OpencodianChatView extends ItemView {
   }
 
   getViewType(): string {
-    return VIEW_TYPE_DEEPSEEKIAN;
+    return VIEW_TYPE_OPENCODIAN;
   }
 
   getDisplayText(): string {
@@ -90,7 +90,14 @@ class OpencodianChatView extends ItemView {
   }
 
   async onClose() {
-    this.abortController?.abort();
+    this.killProcess();
+  }
+
+  killProcess() {
+    if (this.proc) {
+      this.proc.kill();
+      this.proc = null;
+    }
   }
 
   updateContextBar() {
@@ -114,7 +121,7 @@ class OpencodianChatView extends ItemView {
 
     this.inputEl = row.createEl("textarea", {
       cls: "opencodian-input",
-      attr: { placeholder: "Ask anything..." },
+      attr: { placeholder: "Ask opencode..." },
     });
 
     this.sendBtnEl = row.createEl("button", {
@@ -137,13 +144,13 @@ class OpencodianChatView extends ItemView {
     const content = el.createDiv({ cls: "opencodian-message-content" });
 
     content.createEl("h2", { text: "Opencodian" });
-    content.createEl("p", { text: "Your AI assistant in Obsidian. Ask anything about your vault." });
+    content.createEl("p", { text: "Opencode AI agent running in your vault. Each message runs opencode as a subprocess." });
 
     const ul = content.createEl("ul");
     const tips = [
       "Summarise the current note",
-      "Draft a response based on my notes",
-      "Find connections between ideas",
+      "Refactor this file",
+      "Find bugs in my code",
     ];
     for (const tip of tips) {
       const li = ul.createEl("li", { text: tip });
@@ -159,8 +166,8 @@ class OpencodianChatView extends ItemView {
     const text = this.inputEl.value.trim();
     if (!text) return;
 
-    if (!this.plugin.settings.apiEndpoint) {
-      new Notice("Please set your API endpoint in Settings → Opencodian");
+    if (!this.plugin.settings.opencodePath) {
+      new Notice("Please set the opencode CLI path in Settings → Opencodian");
       return;
     }
 
@@ -169,141 +176,70 @@ class OpencodianChatView extends ItemView {
     this.sendBtnEl.setAttr("disabled", "true");
 
     this.addMessageBubble("user", text);
-
-    let noteContent = "";
-    const activeFile = this.app.workspace.getActiveFile();
-    if (activeFile) {
-      try {
-        noteContent = await this.app.vault.read(activeFile);
-      } catch {}
-    }
-
-    const userMsg: ChatMessage = {
-      role: "user",
-      content: noteContent
-        ? `Current note (${activeFile!.path}):\n\n\`\`\`\n${noteContent.slice(0, 3000)}\`\`\`\n\n---\n\n${text}`
-        : text,
-    };
-
-    this.messages.push(userMsg);
-
-    const apiMessages: ChatMessage[] = [
-      { role: "system", content: this.plugin.settings.systemPrompt },
-      ...this.messages.slice(-20),
-    ];
-
-    const assistantEl = this.addMessageBubble("assistant", "");
+    const assistantEl = this.addMessageBubble("assistant", "Running opencode...");
     const contentEl = assistantEl.querySelector(".opencodian-message-content") as HTMLElement;
-    const thinkingEl = assistantEl.querySelector(".opencodian-thinking") as HTMLElement | null;
 
-    this.abortController = new AbortController();
-
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (this.plugin.settings.apiKey) {
-        headers["Authorization"] = `Bearer ${this.plugin.settings.apiKey}`;
-      }
-
-      const body: Record<string, any> = {
-        messages: apiMessages,
-        stream: true,
-        temperature: this.plugin.settings.temperature,
-      };
-      if (this.plugin.settings.model) {
-        body["model"] = this.plugin.settings.model;
-      }
-
-      const endpoint = this.plugin.settings.apiEndpoint.replace(/\/+$/, "") + "/chat/completions";
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: this.abortController.signal,
-      });
-
-      if (!response.ok) {
-        const errBody = await response.text();
-        contentEl.setText(`API error ${response.status}: ${errBody}`);
-        return;
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        contentEl.setText("No response stream available");
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullContent = "";
-      let reasoningText = "";
-      let showedReasoning = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr || jsonStr === "[DONE]") continue;
-
-          try {
-            const chunk = JSON.parse(jsonStr);
-            const delta = chunk.choices?.[0]?.delta;
-            if (!delta) continue;
-
-            if (delta.reasoning_content) {
-              reasoningText += delta.reasoning_content;
-              if (thinkingEl) {
-                thinkingEl.setText(reasoningText);
-                thinkingEl.show();
-              }
-              showedReasoning = true;
-            }
-
-            if (delta.content) {
-              if (showedReasoning && !fullContent) {
-                fullContent += delta.content;
-                contentEl.setText(fullContent);
-              } else {
-                fullContent += delta.content;
-                contentEl.setText(fullContent);
-              }
-            }
-          } catch {}
-        }
-      }
-
-      this.messages.push({ role: "assistant", content: fullContent || reasoningText });
-    } catch (err: any) {
-      if (err.name === "AbortError") {
-        contentEl.setText("(cancelled)");
-      } else {
-        contentEl.setText(`Error: ${err.message}`);
-      }
-    } finally {
+    const vaultPath = this.plugin.getVaultPath();
+    if (!vaultPath) {
+      contentEl.setText("Error: could not resolve vault path");
       this.sendBtnEl.removeAttribute("disabled");
-      this.abortController = null;
-      this.scrollToBottom();
+      return;
     }
+
+    const contextFile = this.app.workspace.getActiveFile();
+    let prompt = text;
+    if (contextFile) {
+      prompt = `(Current note: ${contextFile.path})\n\n${text}`;
+    }
+
+    const args = this.plugin.settings.extraArgs
+      ? this.plugin.settings.extraArgs.split(/\s+/).filter(Boolean)
+      : [];
+
+    args.push(prompt);
+
+    let output = "";
+    let errorOutput = "";
+
+    this.proc = spawn(this.plugin.settings.opencodePath, args, {
+      cwd: vaultPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
+    });
+
+    this.proc.stdout?.on("data", (data: Buffer) => {
+      output += data.toString();
+      contentEl.setText(output.slice(-3000));
+      this.scrollToBottom();
+    });
+
+    this.proc.stderr?.on("data", (data: Buffer) => {
+      errorOutput += data.toString();
+    });
+
+    this.proc.on("error", (err) => {
+      contentEl.setText(`Failed to spawn opencode: ${err.message}\n\nCheck the path in Settings → Opencodian`);
+      this.sendBtnEl.removeAttribute("disabled");
+      this.proc = null;
+    });
+
+    this.proc.on("close", (code) => {
+      if (errorOutput) {
+        output += `\n\n--- stderr ---\n${errorOutput}`;
+      }
+      contentEl.setText(output || `(exit code ${code}, no output)`);
+      this.messages.push({ role: "user", content: text });
+      this.messages.push({ role: "assistant", content: output });
+      this.sendBtnEl.removeAttribute("disabled");
+      this.proc = null;
+      this.scrollToBottom();
+    });
   }
 
   addMessageBubble(role: string, content: string): HTMLElement {
     const el = this.messageContainerEl.createDiv({
       cls: `opencodian-message opencodian-${role}`,
     });
-
-    if (role === "assistant") {
-      const thinking = el.createDiv({ cls: "opencodian-thinking" });
-      thinking.hide();
-    }
 
     const contentEl = el.createDiv({ cls: "opencodian-message-content" });
     contentEl.setText(content);

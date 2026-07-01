@@ -1,0 +1,11 @@
+{
+  "id": "deepseekian",
+  "name": "Deepseekian",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "DeepSeek AI chat assistant embedded in your vault sidebar",
+  "author": "Jack",
+  "authorUrl": "",
+  "fundingUrl": "",
+  "isDesktopOnly": false
+}

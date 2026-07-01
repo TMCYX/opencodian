@@ -1,0 +1,20 @@
+{
+  "name": "deepseekian",
+  "version": "1.0.0",
+  "description": "DeepSeek AI chat assistant in Obsidian",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.24.0",
+    "obsidian": "latest",
+    "tslib": "^2.8.0",
+    "typescript": "^5.6.0"
+  }
+}

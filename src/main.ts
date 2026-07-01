@@ -1,33 +1,33 @@
 import { ItemView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
-import { DeepseekianSettings, DEFAULT_SETTINGS, DeepseekianSettingTab } from "./settings";
+import { OpencodianSettings, DEFAULT_SETTINGS, OpencodianSettingTab } from "./settings";
 
-const VIEW_TYPE_DEEPSEEKIAN = "deepseekian-chat-view";
+const VIEW_TYPE_DEEPSEEKIAN = "opencodian-chat-view";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
 }
 
-export default class DeepseekianPlugin extends Plugin {
-  settings: DeepseekianSettings = DEFAULT_SETTINGS;
+export default class OpencodianPlugin extends Plugin {
+  settings: OpencodianSettings = DEFAULT_SETTINGS;
 
   async onload() {
     await this.loadSettings();
 
-    this.addSettingTab(new DeepseekianSettingTab(this.app, this));
+    this.addSettingTab(new OpencodianSettingTab(this.app, this));
 
     this.registerView(
       VIEW_TYPE_DEEPSEEKIAN,
-      (leaf) => new DeepseekianChatView(leaf, this)
+      (leaf) => new OpencodianChatView(leaf, this)
     );
 
-    this.addRibbonIcon("message-square", "Open Deepseekian", () => {
+    this.addRibbonIcon("message-square", "Open Opencodian", () => {
       this.activateView();
     });
 
     this.addCommand({
-      id: "open-deepseekian",
-      name: "Open Deepseekian chat",
+      id: "open-opencodian",
+      name: "Open Opencodian chat",
       callback: () => this.activateView(),
     });
   }
@@ -54,8 +54,8 @@ export default class DeepseekianPlugin extends Plugin {
   }
 }
 
-class DeepseekianChatView extends ItemView {
-  plugin: DeepseekianPlugin;
+class OpencodianChatView extends ItemView {
+  plugin: OpencodianPlugin;
   messages: ChatMessage[] = [];
   messageContainerEl: HTMLElement;
   inputEl: HTMLTextAreaElement;
@@ -63,7 +63,7 @@ class DeepseekianChatView extends ItemView {
   contextLabelEl: HTMLElement;
   abortController: AbortController | null = null;
 
-  constructor(leaf: WorkspaceLeaf, plugin: DeepseekianPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: OpencodianPlugin) {
     super(leaf);
     this.plugin = plugin;
   }
@@ -73,7 +73,7 @@ class DeepseekianChatView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Deepseekian";
+    return "Opencodian";
   }
 
   getIcon(): string {
@@ -102,23 +102,23 @@ class DeepseekianChatView extends ItemView {
     const container = this.containerEl;
     container.empty();
 
-    const chatContainer = container.createDiv({ cls: "deepseekian-container" });
-    this.messageContainerEl = chatContainer.createDiv({ cls: "deepseekian-messages" });
+    const chatContainer = container.createDiv({ cls: "opencodian-container" });
+    this.messageContainerEl = chatContainer.createDiv({ cls: "opencodian-messages" });
 
-    const contextBar = chatContainer.createDiv({ cls: "deepseekian-context-bar" });
-    this.contextLabelEl = contextBar.createSpan({ cls: "deepseekian-context-label" });
+    const contextBar = chatContainer.createDiv({ cls: "opencodian-context-bar" });
+    this.contextLabelEl = contextBar.createSpan({ cls: "opencodian-context-label" });
     this.updateContextBar();
 
-    const inputArea = chatContainer.createDiv({ cls: "deepseekian-input-area" });
-    const row = inputArea.createDiv({ cls: "deepseekian-input-row" });
+    const inputArea = chatContainer.createDiv({ cls: "opencodian-input-area" });
+    const row = inputArea.createDiv({ cls: "opencodian-input-row" });
 
     this.inputEl = row.createEl("textarea", {
-      cls: "deepseekian-input",
+      cls: "opencodian-input",
       attr: { placeholder: "Ask DeepSeek anything..." },
     });
 
     this.sendBtnEl = row.createEl("button", {
-      cls: "deepseekian-send-btn",
+      cls: "opencodian-send-btn",
       text: "Send",
     });
 
@@ -133,10 +133,10 @@ class DeepseekianChatView extends ItemView {
   }
 
   addWelcomeMessage() {
-    const el = this.messageContainerEl.createDiv({ cls: "deepseekian-message deepseekian-welcome" });
-    const content = el.createDiv({ cls: "deepseekian-message-content" });
+    const el = this.messageContainerEl.createDiv({ cls: "opencodian-message opencodian-welcome" });
+    const content = el.createDiv({ cls: "opencodian-message-content" });
 
-    content.createEl("h2", { text: "Deepseekian" });
+    content.createEl("h2", { text: "Opencodian" });
     content.createEl("p", { text: "Your DeepSeek AI assistant in Obsidian. Ask anything about your vault." });
 
     const ul = content.createEl("ul");
@@ -147,7 +147,7 @@ class DeepseekianChatView extends ItemView {
     ];
     for (const tip of tips) {
       const li = ul.createEl("li", { text: tip });
-      li.addClass("deepseekian-hint");
+      li.addClass("opencodian-hint");
       li.addEventListener("click", () => {
         this.inputEl.value = tip;
         this.inputEl.focus();
@@ -160,7 +160,7 @@ class DeepseekianChatView extends ItemView {
     if (!text) return;
 
     if (!this.plugin.settings.apiKey) {
-      new Notice("Please set your DeepSeek API key in Settings → Deepseekian");
+      new Notice("Please set your DeepSeek API key in Settings → Opencodian");
       return;
     }
 
@@ -193,8 +193,8 @@ class DeepseekianChatView extends ItemView {
     ];
 
     const assistantEl = this.addMessageBubble("assistant", "");
-    const contentEl = assistantEl.querySelector(".deepseekian-message-content") as HTMLElement;
-    const thinkingEl = assistantEl.querySelector(".deepseekian-thinking") as HTMLElement | null;
+    const contentEl = assistantEl.querySelector(".opencodian-message-content") as HTMLElement;
+    const thinkingEl = assistantEl.querySelector(".opencodian-thinking") as HTMLElement | null;
 
     this.abortController = new AbortController();
 
@@ -288,15 +288,15 @@ class DeepseekianChatView extends ItemView {
 
   addMessageBubble(role: string, content: string): HTMLElement {
     const el = this.messageContainerEl.createDiv({
-      cls: `deepseekian-message deepseekian-${role}`,
+      cls: `opencodian-message opencodian-${role}`,
     });
 
     if (role === "assistant") {
-      const thinking = el.createDiv({ cls: "deepseekian-thinking" });
+      const thinking = el.createDiv({ cls: "opencodian-thinking" });
       thinking.hide();
     }
 
-    const contentEl = el.createDiv({ cls: "deepseekian-message-content" });
+    const contentEl = el.createDiv({ cls: "opencodian-message-content" });
     contentEl.setText(content);
 
     this.scrollToBottom();

@@ -1,24 +1,24 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import DeepseekianPlugin from "./main";
+import OpencodianPlugin from "./main";
 
-export interface DeepseekianSettings {
+export interface OpencodianSettings {
   apiKey: string;
   model: string;
   systemPrompt: string;
   temperature: number;
 }
 
-export const DEFAULT_SETTINGS: DeepseekianSettings = {
+export const DEFAULT_SETTINGS: OpencodianSettings = {
   apiKey: "",
   model: "deepseek-chat",
   systemPrompt: "You are a helpful AI assistant integrated in Obsidian. The user's vault root is available as context. Be concise and direct.",
   temperature: 0.7,
 };
 
-export class DeepseekianSettingTab extends PluginSettingTab {
-  plugin: DeepseekianPlugin;
+export class OpencodianSettingTab extends PluginSettingTab {
+  plugin: OpencodianPlugin;
 
-  constructor(app: App, plugin: DeepseekianPlugin) {
+  constructor(app: App, plugin: OpencodianPlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }

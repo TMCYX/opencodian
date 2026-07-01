@@ -1,7 +1,7 @@
 {
-  "name": "deepseekian",
+  "name": "opencodian",
   "version": "1.0.0",
-  "description": "DeepSeek AI chat assistant in Obsidian",
+  "description": "AI chat assistant powered by deepseek/deepseek model, embedded in Obsidian",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

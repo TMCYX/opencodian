@@ -1,4 +1,4 @@
-# Deepseekian
+# Opencodian
 
 DeepSeek AI chat assistant embedded in your Obsidian vault sidebar.
 
@@ -23,25 +23,25 @@ DeepSeek AI chat assistant embedded in your Obsidian vault sidebar.
 2. Open Obsidian → Settings → BRAT → Add Beta plugin
 3. Enter this repository URL
 4. Click "Add Plugin"
-5. Enable Deepseekian in Community Plugins
+5. Enable Opencodian in Community Plugins
 
 ### Manual
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release
-2. Create `{vault}/.obsidian/plugins/deepseekian/`
+2. Create `{vault}/.obsidian/plugins/opencodian/`
 3. Copy the three files into that folder
 4. Enable the plugin in Settings → Community plugins
 
 ## Usage
 
-1. Click the message-square icon in the ribbon bar, or run the "Open Deepseekian chat" command
+1. Click the message-square icon in the ribbon bar, or run the "Open Opencodian chat" command
 2. Open a note to use as context
 3. Type your question and press Enter or click Send
 4. DeepSeek will respond with the current note as context
 
 ## Configuration
 
-Go to Settings → Deepseekian:
+Go to Settings → Opencodian:
 
 - **API Key**: Your DeepSeek API key
 - **Model**: deepseek-chat (V3) or deepseek-reasoner (R1)

@@ -1,6 +1,6 @@
 {
-  "id": "deepseekian",
-  "name": "Deepseekian",
+  "id": "opencodian",
+  "name": "Opencodian",
   "version": "1.0.0",
   "minAppVersion": "1.5.0",
   "description": "DeepSeek AI chat assistant embedded in your vault sidebar",

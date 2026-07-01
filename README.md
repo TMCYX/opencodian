@@ -1,19 +1,19 @@
 # Opencodian
 
-DeepSeek AI chat assistant embedded in your Obsidian vault sidebar.
+AI chat assistant embedded in your Obsidian vault sidebar. Works with any OpenAI-compatible backend — LM Studio, Ollama, DeepSeek, OpenAI, or anything you point it at.
 
 ## Features
 
-- Chat with DeepSeek directly in Obsidian sidebar
+- Chat with any LLM directly in Obsidian sidebar
 - Context-aware: automatically includes your current note as context
-- Supports DeepSeek V3 (deepseek-chat) and DeepSeek R1 (deepseek-reasoner)
-- Streaming responses with reasoning display (R1)
+- Bring your own backend: LM Studio, Ollama, DeepSeek, OpenAI...
+- Streaming responses with reasoning display
 - Conversation history preserved in-memory
 
 ## Requirements
 
 - Obsidian v1.5.0+
-- A DeepSeek API key from https://platform.deepseek.com
+- A running OpenAI-compatible API endpoint (e.g. LM Studio on localhost, or any cloud API)
 
 ## Installation
 
@@ -37,14 +37,15 @@ DeepSeek AI chat assistant embedded in your Obsidian vault sidebar.
 1. Click the message-square icon in the ribbon bar, or run the "Open Opencodian chat" command
 2. Open a note to use as context
 3. Type your question and press Enter or click Send
-4. DeepSeek will respond with the current note as context
+4. The AI will respond with the current note as context
 
 ## Configuration
 
 Go to Settings → Opencodian:
 
-- **API Key**: Your DeepSeek API key
-- **Model**: deepseek-chat (V3) or deepseek-reasoner (R1)
+- **API Endpoint**: Your OpenAI-compatible chat completions URL (default: `http://127.0.0.1:1234/v1` for LM Studio)
+- **API Key**: Optional — only if your endpoint requires auth
+- **Model**: Model name (leave empty for endpoint default)
 - **Temperature**: 0-2, higher for more creativity
 - **System Prompt**: Custom instructions for the AI
 

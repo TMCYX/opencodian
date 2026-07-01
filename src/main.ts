@@ -114,7 +114,7 @@ class OpencodianChatView extends ItemView {
 
     this.inputEl = row.createEl("textarea", {
       cls: "opencodian-input",
-      attr: { placeholder: "Ask DeepSeek anything..." },
+      attr: { placeholder: "Ask anything..." },
     });
 
     this.sendBtnEl = row.createEl("button", {
@@ -137,7 +137,7 @@ class OpencodianChatView extends ItemView {
     const content = el.createDiv({ cls: "opencodian-message-content" });
 
     content.createEl("h2", { text: "Opencodian" });
-    content.createEl("p", { text: "Your DeepSeek AI assistant in Obsidian. Ask anything about your vault." });
+    content.createEl("p", { text: "Your AI assistant in Obsidian. Ask anything about your vault." });
 
     const ul = content.createEl("ul");
     const tips = [
@@ -159,8 +159,8 @@ class OpencodianChatView extends ItemView {
     const text = this.inputEl.value.trim();
     if (!text) return;
 
-    if (!this.plugin.settings.apiKey) {
-      new Notice("Please set your DeepSeek API key in Settings → Opencodian");
+    if (!this.plugin.settings.apiEndpoint) {
+      new Notice("Please set your API endpoint in Settings → Opencodian");
       return;
     }
 
@@ -199,18 +199,27 @@ class OpencodianChatView extends ItemView {
     this.abortController = new AbortController();
 
     try {
-      const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (this.plugin.settings.apiKey) {
+        headers["Authorization"] = `Bearer ${this.plugin.settings.apiKey}`;
+      }
+
+      const body: Record<string, any> = {
+        messages: apiMessages,
+        stream: true,
+        temperature: this.plugin.settings.temperature,
+      };
+      if (this.plugin.settings.model) {
+        body["model"] = this.plugin.settings.model;
+      }
+
+      const endpoint = this.plugin.settings.apiEndpoint.replace(/\/+$/, "") + "/chat/completions";
+      const response = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.plugin.settings.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.plugin.settings.model,
-          messages: apiMessages,
-          stream: true,
-          temperature: this.plugin.settings.temperature,
-        }),
+        headers,
+        body: JSON.stringify(body),
         signal: this.abortController.signal,
       });
 

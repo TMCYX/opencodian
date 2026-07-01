@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import OpencodianPlugin from "./main";
 
 export interface OpencodianSettings {
+  apiEndpoint: string;
   apiKey: string;
   model: string;
   systemPrompt: string;
@@ -9,8 +10,9 @@ export interface OpencodianSettings {
 }
 
 export const DEFAULT_SETTINGS: OpencodianSettings = {
+  apiEndpoint: "http://127.0.0.1:1234/v1",
   apiKey: "",
-  model: "deepseek-chat",
+  model: "",
   systemPrompt: "You are a helpful AI assistant integrated in Obsidian. The user's vault root is available as context. Be concise and direct.",
   temperature: 0.7,
 };
@@ -28,8 +30,21 @@ export class OpencodianSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("DeepSeek API Key")
-      .setDesc("Your DeepSeek API key from platform.deepseek.com")
+      .setName("API Endpoint")
+      .setDesc("OpenAI-compatible chat completions URL (e.g. http://127.0.0.1:1234/v1 for LM Studio)")
+      .addText((text) =>
+        text
+          .setPlaceholder("http://127.0.0.1:1234/v1")
+          .setValue(this.plugin.settings.apiEndpoint)
+          .onChange(async (value) => {
+            this.plugin.settings.apiEndpoint = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("API Key (optional)")
+      .setDesc("Only if your endpoint requires authentication")
       .addText((text) =>
         text
           .setPlaceholder("sk-...")
@@ -42,14 +57,13 @@ export class OpencodianSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Model")
-      .setDesc("DeepSeek model to use")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("deepseek-chat", "DeepSeek V3 (deepseek-chat)")
-          .addOption("deepseek-reasoner", "DeepSeek R1 (deepseek-reasoner)")
+      .setDesc("Model name (leave empty for endpoint default)")
+      .addText((text) =>
+        text
+          .setPlaceholder("e.g. deepseek-chat, gpt-4, qwen2.5")
           .setValue(this.plugin.settings.model)
           .onChange(async (value) => {
-            this.plugin.settings.model = value;
+            this.plugin.settings.model = value.trim();
             await this.plugin.saveSettings();
           })
       );

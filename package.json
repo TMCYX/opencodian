@@ -1,6 +1,6 @@
 {
   "name": "opencodian",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "AI chat assistant powered by deepseek/deepseek model, embedded in Obsidian",
   "main": "main.js",
   "scripts": {

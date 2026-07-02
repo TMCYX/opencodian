@@ -196,10 +196,11 @@ class OpencodianChatView extends ItemView {
       ? this.plugin.settings.extraArgs.split(/\s+/).filter(Boolean)
       : [];
 
-    const args = ["run", ...extra, "--", prompt];
+    const args = ["run", "--pure", ...extra, "--", prompt];
+
+    const stripAnsi = (str: string) => str.replace(/\u001b\[\d+(;\d+)*m/g, "").replace(/\u001b\[\d+[A-Za-z]/g, "");
 
     let output = "";
-    let errorOutput = "";
 
     this.proc = spawn(this.plugin.settings.opencodePath, args, {
       cwd: vaultPath,
@@ -208,13 +209,15 @@ class OpencodianChatView extends ItemView {
     });
 
     this.proc.stdout?.on("data", (data: Buffer) => {
-      output += data.toString();
-      contentEl.setText(output.slice(-3000));
+      output += stripAnsi(data.toString());
+      contentEl.setText(output.slice(-5000));
       this.scrollToBottom();
     });
 
     this.proc.stderr?.on("data", (data: Buffer) => {
-      errorOutput += data.toString();
+      output += stripAnsi(data.toString());
+      contentEl.setText(output.slice(-5000));
+      this.scrollToBottom();
     });
 
     this.proc.on("error", (err) => {
@@ -224,9 +227,6 @@ class OpencodianChatView extends ItemView {
     });
 
     this.proc.on("close", (code) => {
-      if (errorOutput) {
-        output += `\n\n--- stderr ---\n${errorOutput}`;
-      }
       contentEl.setText(output || `(exit code ${code}, no output)`);
       this.messages.push({ role: "user", content: text });
       this.messages.push({ role: "assistant", content: output });

@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 
 export function spawnOpencode(binPath: string, cwd: string, extraArgs: string[]): ChildProcess {
-  const args = ["acp", "--cwd", cwd, ...extraArgs];
+  const args = ["acp", "--pure", "--cwd", cwd, ...extraArgs];
   const proc = spawn(binPath, args, {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],

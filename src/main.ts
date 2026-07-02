@@ -1,8 +1,25 @@
-import { ItemView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { FuzzySuggestModal, ItemView, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { OpencodianSettings, DEFAULT_SETTINGS, OpencodianSettingTab } from "./settings";
-import { AcpConnection } from "./acp/connection";
+import { AcpConnection, ConfigOption } from "./acp/connection";
 
 const VIEW_TYPE_OPENCODIAN = "opencodian-chat-view";
+
+// File picker modal
+class FilePickerModal extends FuzzySuggestModal<TFile> {
+  constructor(app: any, private onPick: (file: TFile) => void) {
+    super(app);
+    this.setPlaceholder("Pick a file to attach as context...");
+  }
+  getItems(): TFile[] {
+    return this.app.vault.getFiles();
+  }
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+  onChooseItem(file: TFile): void {
+    this.onPick(file);
+  }
+}
 
 export default class OpencodianPlugin extends Plugin {
   settings: OpencodianSettings = DEFAULT_SETTINGS;
@@ -51,6 +68,15 @@ class OpencodianChatView extends ItemView {
   contentEl: HTMLElement | null = null;
   connected = false;
 
+  toolbarEl: HTMLElement;
+  modelBtnEl: HTMLElement;
+  modelDropdownEl: HTMLElement;
+  modeToggleEl: HTMLElement;
+  modeLabelEl: HTMLElement;
+  fileBtnEl: HTMLElement;
+  attachedFile: TFile | null = null;
+  useAutoContext: boolean = true;
+
   constructor(leaf: WorkspaceLeaf, plugin: OpencodianPlugin) {
     super(leaf);
     this.plugin = plugin;
@@ -85,13 +111,50 @@ class OpencodianChatView extends ItemView {
       this.conn.onStatusChange = (status) => {
         if (status === "turn_done") this.handleTurnDone();
       };
+      this.conn.onConfigOptionsChanged = (options) => this.refreshToolbar(options);
 
       await this.conn.start(this.plugin.settings.opencodePath, vaultPath, extra);
       this.connected = true;
       this.updateStatus("connected");
+      this.refreshToolbar(this.conn.configOptions);
     } catch (err: any) {
       this.updateStatus(`error: ${err.message}`);
       this.connected = false;
+    }
+  }
+
+  refreshToolbar(options: ConfigOption[]) {
+    const modelOpt = options.find(o => o.category === "model");
+    if (modelOpt) {
+      const model = modelOpt.options.find(o => o.value === modelOpt.currentValue);
+      this.modelBtnEl.setText(model?.name || modelOpt.currentValue);
+      this.renderModelDropdown(modelOpt);
+    }
+
+    const modeOpt = options.find(o => o.category === "mode");
+    if (modeOpt) {
+      const isPlan = modeOpt.currentValue === "plan";
+      this.modeToggleEl.toggleClass("active", isPlan);
+      this.modeLabelEl.setText(isPlan ? "plan" : "build");
+    }
+  }
+
+  renderModelDropdown(modelOpt: ConfigOption) {
+    this.modelDropdownEl.empty();
+    for (const opt of modelOpt.options) {
+      const item = this.modelDropdownEl.createDiv({ cls: "opencodian-model-option" });
+      item.toggleClass("selected", opt.value === modelOpt.currentValue);
+      item.setText(opt.name);
+      if (opt.description) item.setAttr("title", opt.description);
+      item.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try {
+          await this.conn.setConfigOption("model", opt.value);
+          new Notice(`Model: ${opt.name}`);
+        } catch (err: any) {
+          new Notice(`Failed to change model: ${err.message}`);
+        }
+      });
     }
   }
 
@@ -126,9 +189,15 @@ class OpencodianChatView extends ItemView {
     container.empty();
 
     const chatContainer = container.createDiv({ cls: "opencodian-container" });
+
+    // Toolbar at top
+    this.toolbarEl = chatContainer.createDiv({ cls: "opencodian-toolbar" });
+    this.buildToolbar();
+
     this.statusEl = chatContainer.createDiv({ cls: "opencodian-status" });
     this.messageContainerEl = chatContainer.createDiv({ cls: "opencodian-messages" });
 
+    // Context bar
     const contextBar = chatContainer.createDiv({ cls: "opencodian-context-bar" });
     const ctxLabel = contextBar.createSpan({ cls: "opencodian-context-label" });
     const updateCtx = () => {
@@ -138,6 +207,7 @@ class OpencodianChatView extends ItemView {
     updateCtx();
     this.registerEvent(this.app.workspace.on("active-leaf-change", updateCtx));
 
+    // Input area
     const inputArea = chatContainer.createDiv({ cls: "opencodian-input-area" });
     const row = inputArea.createDiv({ cls: "opencodian-input-row" });
 
@@ -154,6 +224,52 @@ class OpencodianChatView extends ItemView {
     this.sendBtnEl.addEventListener("click", () => this.handleSend());
 
     this.addWelcomeMessage();
+  }
+
+  buildToolbar() {
+    this.toolbarEl.empty();
+    const leftGroup = this.toolbarEl.createDiv({ cls: "opencodian-toolbar-group" });
+    const rightGroup = this.toolbarEl.createDiv({ cls: "opencodian-toolbar-group opencodian-toolbar-right" });
+
+    // Model selector
+    const modelWrap = leftGroup.createDiv({ cls: "opencodian-model-selector" });
+    this.modelBtnEl = modelWrap.createDiv({ cls: "opencodian-model-btn" });
+    this.modelBtnEl.setText("model...");
+    this.modelDropdownEl = modelWrap.createDiv({ cls: "opencodian-model-dropdown" });
+
+    // File attach button
+    this.fileBtnEl = leftGroup.createEl("button", { cls: "opencodian-toolbar-btn opencodian-file-btn" });
+    this.fileBtnEl.setText("+");
+    this.fileBtnEl.setAttr("title", "Attach a file as context");
+    this.fileBtnEl.addEventListener("click", () => this.pickFile());
+
+    // Spacer
+    rightGroup.createDiv({ cls: "opencodian-toolbar-spacer" });
+
+    // Mode toggle (build/plan)
+    const modeWrap = rightGroup.createDiv({ cls: "opencodian-mode-toggle" });
+    this.modeLabelEl = modeWrap.createSpan({ cls: "opencodian-mode-label", text: "build" });
+    this.modeToggleEl = modeWrap.createDiv({ cls: "opencodian-toggle-switch" });
+    this.modeToggleEl.addEventListener("click", () => this.toggleMode());
+  }
+
+  async toggleMode() {
+    const modeOpt = this.conn.configOptions.find(o => o.category === "mode");
+    if (!modeOpt) return;
+    const next = modeOpt.currentValue === "plan" ? "build" : "plan";
+    try {
+      await this.conn.setConfigOption("mode", next);
+    } catch (err: any) {
+      new Notice(`Failed to switch mode: ${err.message}`);
+    }
+  }
+
+  pickFile() {
+    new FilePickerModal(this.app, (file: TFile) => {
+      this.attachedFile = file;
+      this.fileBtnEl.addClass("active");
+      new Notice(`Attached: ${file.path}`);
+    }).open();
   }
 
   addWelcomeMessage() {
@@ -191,13 +307,23 @@ class OpencodianChatView extends ItemView {
 
     this.updateStatus("waiting for opencode...");
 
-    const contextFile = this.app.workspace.getActiveFile();
     let prompt = text;
-    if (contextFile) {
-      let noteContent = "";
-      try { noteContent = await this.app.vault.read(contextFile); } catch {}
-      if (noteContent) {
-        prompt = `Current note (${contextFile.path}):\n\`\`\`\n${noteContent.slice(0, 2000)}\`\`\`\n\n---\n\n${text}`;
+
+    // Attach explicitly picked file
+    if (this.attachedFile) {
+      try {
+        const content = await this.app.vault.read(this.attachedFile);
+        prompt = `File: ${this.attachedFile.path}\n\`\`\`\n${content.slice(0, 5000)}\`\`\`\n\n---\n\n${text}`;
+      } catch {}
+    } else if (this.useAutoContext) {
+      // Auto-attach current active note as context
+      const contextFile = this.app.workspace.getActiveFile();
+      if (contextFile) {
+        let noteContent = "";
+        try { noteContent = await this.app.vault.read(contextFile); } catch {}
+        if (noteContent) {
+          prompt = `Current note (${contextFile.path}):\n\`\`\`\n${noteContent.slice(0, 2000)}\`\`\`\n\n---\n\n${text}`;
+        }
       }
     }
 
@@ -214,12 +340,11 @@ class OpencodianChatView extends ItemView {
     if (role === "assistant") {
       const thinking = el.createDiv({ cls: "opencodian-thinking" });
       thinking.hide();
-      // Build animated dots
       const dots = thinking.createSpan({ cls: "opencodian-thinking-dots" });
       for (let i = 0; i < 3; i++) {
         dots.createSpan({ cls: "opencodian-dot" });
       }
-      const label = thinking.createSpan({ cls: "opencodian-thinking-label", text: "thinking" });
+      thinking.createSpan({ cls: "opencodian-thinking-label", text: "thinking" });
     }
     const contentEl = el.createDiv({ cls: "opencodian-message-content" });
     contentEl.setText(content);

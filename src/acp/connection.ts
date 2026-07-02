@@ -5,15 +5,38 @@ import { spawnOpencode, shutdownProcess } from "./subprocess";
 export type AcpMessageHandler = (text: string) => void;
 export type AcpStatusHandler = (status: string, data?: any) => void;
 
+export interface ConfigOptionValue {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+export interface ConfigOption {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  type: string;
+  currentValue: string;
+  options: ConfigOptionValue[];
+}
+
 export class AcpConnection {
   private transport: JsonRpcTransport | null = null;
   private proc: ChildProcess | null = null;
   private sessionId: string | null = null;
   private onAssistantText: AcpMessageHandler | null = null;
   private onStatus: AcpStatusHandler | null = null;
+  private _configOptions: ConfigOption[] = [];
+  private _onConfigOptionsChanged: ((options: ConfigOption[]) => void) | null = null;
 
   set onText(h: AcpMessageHandler) { this.onAssistantText = h; }
   set onStatusChange(h: AcpStatusHandler) { this.onStatus = h; }
+  set onConfigOptionsChanged(h: (options: ConfigOption[]) => void) { this._onConfigOptionsChanged = h; }
+
+  get configOptions(): ConfigOption[] {
+    return this._configOptions;
+  }
 
   async start(binPath: string, cwd: string, extraArgs: string[]): Promise<void> {
     this.proc = spawnOpencode(binPath, cwd, extraArgs);
@@ -23,28 +46,19 @@ export class AcpConnection {
       const update = params.update || params;
       if (!update) return;
 
-      // agent_message_chunk: contains text content
+      if (update.sessionUpdate === "config_option_update" && update.configOptions) {
+        this._configOptions = update.configOptions;
+        this._onConfigOptionsChanged?.(this._configOptions);
+      }
+
       if (update.sessionUpdate === "agent_message_chunk" && update.content?.type === "text") {
         this.onAssistantText?.(update.content.text);
       }
 
-      // user_message_chunk: contains text content
-      if (update.sessionUpdate === "user_message_chunk" && update.content?.type === "text") {
-        // ignore user message echoes
-      }
-
-      // tool_call / tool_call_update: could handle later
-      if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
-        // tool call notifications - not displayed yet
-      }
-
-      // usage_update: track token usage
       if (update.sessionUpdate === "usage_update") {
-        // session ended
         this.onStatus?.("turn_done");
       }
 
-      // legacy format: messages in updates
       if (update.type === "message" && update.message?.role === "assistant") {
         const blocks = update.message.content || [];
         for (const block of blocks) {
@@ -65,6 +79,21 @@ export class AcpConnection {
     const session = await this.transport.request("session/new", { cwd, mcpServers: [] });
     this.sessionId = session?.sessionId || session?.id || null;
     if (!this.sessionId) throw new Error("session/new: no sessionId returned");
+    this._configOptions = session?.configOptions || [];
+  }
+
+  async setConfigOption(configId: string, value: string): Promise<ConfigOption[]> {
+    if (!this.transport || !this.sessionId) throw new Error("Not connected");
+    const result = await this.transport.request("session/set_config_option", {
+      sessionId: this.sessionId,
+      configId,
+      value,
+    });
+    if (result?.configOptions) {
+      this._configOptions = result.configOptions;
+      this._onConfigOptionsChanged?.(this._configOptions);
+    }
+    return this._configOptions;
   }
 
   async sendPrompt(prompt: string): Promise<void> {
@@ -90,6 +119,7 @@ export class AcpConnection {
     this.proc = null;
     this.transport = null;
     this.sessionId = null;
+    this._configOptions = [];
   }
 
   get isConnected(): boolean {

@@ -7,6 +7,16 @@
   -webkit-user-select: text;
 }
 
+.opencodian-status {
+  padding: 2px 12px;
+  font-size: 0.7em;
+  color: var(--text-faint);
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  font-family: monospace;
+}
+
 .opencodian-messages {
   flex: 1;
   overflow-y: auto;
@@ -69,20 +79,6 @@
 .opencodian-hint:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
-}
-
-.opencodian-thinking {
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  background: var(--background-primary-alt);
-  border-left: 3px solid var(--color-yellow);
-  font-size: 0.85em;
-  color: var(--text-muted);
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .opencodian-message-content {

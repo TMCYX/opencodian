@@ -1,6 +1,6 @@
 import { ItemView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { OpencodianSettings, DEFAULT_SETTINGS, OpencodianSettingTab } from "./settings";
-import { spawn, ChildProcess } from "child_process";
+import { AcpConnection } from "./acp/connection";
 
 const VIEW_TYPE_OPENCODIAN = "opencodian-chat-view";
 
@@ -9,35 +9,20 @@ export default class OpencodianPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-
     this.addSettingTab(new OpencodianSettingTab(this.app, this));
-
-    this.registerView(
-      VIEW_TYPE_OPENCODIAN,
-      (leaf) => new OpencodianChatView(leaf, this)
-    );
-
-    this.addRibbonIcon("message-square", "Open Opencodian", () => {
-      this.activateView();
-    });
-
-    this.addCommand({
-      id: "open-opencodian",
-      name: "Open Opencodian chat",
-      callback: () => this.activateView(),
-    });
+    this.registerView(VIEW_TYPE_OPENCODIAN, (leaf) => new OpencodianChatView(leaf, this));
+    this.addRibbonIcon("message-square", "Open Opencodian", () => this.activateView());
+    this.addCommand({ id: "open-opencodian", name: "Open Opencodian chat", callback: () => this.activateView() });
   }
 
   async activateView() {
     const { workspace } = this.app;
     let leaf = workspace.getLeavesOfType(VIEW_TYPE_OPENCODIAN).first();
-
     if (!leaf) {
       leaf = workspace.getRightLeaf(false);
       if (!leaf) return;
       await leaf.setViewState({ type: VIEW_TYPE_OPENCODIAN, active: true });
     }
-
     workspace.revealLeaf(leaf);
   }
 
@@ -56,53 +41,79 @@ export default class OpencodianPlugin extends Plugin {
 
 class OpencodianChatView extends ItemView {
   plugin: OpencodianPlugin;
-  messages: { role: string; content: string }[] = [];
+  conn: AcpConnection;
   messageContainerEl: HTMLElement;
   inputEl: HTMLTextAreaElement;
   sendBtnEl: HTMLElement;
-  contextLabelEl: HTMLElement;
-  proc: ChildProcess | null = null;
+  statusEl: HTMLElement;
+  currentAssistantContent: string = "";
+  currentAssistantEl: HTMLElement | null = null;
+  contentEl: HTMLElement | null = null;
+  connected = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: OpencodianPlugin) {
     super(leaf);
     this.plugin = plugin;
+    this.conn = new AcpConnection();
   }
 
-  getViewType(): string {
-    return VIEW_TYPE_OPENCODIAN;
-  }
-
-  getDisplayText(): string {
-    return "Opencodian";
-  }
-
-  getIcon(): string {
-    return "message-square";
-  }
+  getViewType(): string { return VIEW_TYPE_OPENCODIAN; }
+  getDisplayText(): string { return "Opencodian"; }
+  getIcon(): string { return "message-square"; }
 
   async onOpen() {
     this.setupDOM();
-    this.addWelcomeMessage();
-
-    this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => this.updateContextBar())
-    );
+    this.updateStatus("idle");
+    try { await this.connectToOpencode(); } catch {}
   }
 
   async onClose() {
-    this.killProcess();
+    await this.conn.stop();
   }
 
-  killProcess() {
-    if (this.proc) {
-      this.proc.kill();
-      this.proc = null;
+  async connectToOpencode() {
+    const vaultPath = this.plugin.getVaultPath();
+    if (!vaultPath) return;
+
+    this.updateStatus("connecting...");
+    try {
+      const extra = this.plugin.settings.extraArgs
+        ? this.plugin.settings.extraArgs.split(/\s+/).filter(Boolean)
+        : [];
+
+      this.conn.onText = (text) => this.handleStreamText(text);
+      this.conn.onStatusChange = (status) => {
+        if (status === "turn_done") this.handleTurnDone();
+      };
+
+      await this.conn.start(this.plugin.settings.opencodePath, vaultPath, extra);
+      this.connected = true;
+      this.updateStatus("connected");
+    } catch (err: any) {
+      this.updateStatus(`error: ${err.message}`);
+      this.connected = false;
     }
   }
 
-  updateContextBar() {
-    const file = this.app.workspace.getActiveFile();
-    this.contextLabelEl.setText(file ? `Context: ${file.path}` : "Context: (no file open)");
+  handleStreamText(text: string) {
+    if (!this.currentAssistantEl) return;
+    this.currentAssistantContent += text;
+    if (this.contentEl) {
+      this.contentEl.setText(this.currentAssistantContent);
+      this.scrollToBottom();
+    }
+  }
+
+  handleTurnDone() {
+    this.currentAssistantEl = null;
+    this.contentEl = null;
+    this.currentAssistantContent = "";
+    this.sendBtnEl.removeAttribute("disabled");
+    this.updateStatus("connected");
+  }
+
+  updateStatus(status: string) {
+    this.statusEl.setText(status);
   }
 
   setupDOM() {
@@ -110,11 +121,17 @@ class OpencodianChatView extends ItemView {
     container.empty();
 
     const chatContainer = container.createDiv({ cls: "opencodian-container" });
+    this.statusEl = chatContainer.createDiv({ cls: "opencodian-status" });
     this.messageContainerEl = chatContainer.createDiv({ cls: "opencodian-messages" });
 
     const contextBar = chatContainer.createDiv({ cls: "opencodian-context-bar" });
-    this.contextLabelEl = contextBar.createSpan({ cls: "opencodian-context-label" });
-    this.updateContextBar();
+    const ctxLabel = contextBar.createSpan({ cls: "opencodian-context-label" });
+    const updateCtx = () => {
+      const f = this.app.workspace.getActiveFile();
+      ctxLabel.setText(f ? `Context: ${f.path}` : "Context: (none)");
+    };
+    updateCtx();
+    this.registerEvent(this.app.workspace.on("active-leaf-change", updateCtx));
 
     const inputArea = chatContainer.createDiv({ cls: "opencodian-input-area" });
     const row = inputArea.createDiv({ cls: "opencodian-input-row" });
@@ -124,41 +141,26 @@ class OpencodianChatView extends ItemView {
       attr: { placeholder: "Ask opencode..." },
     });
 
-    this.sendBtnEl = row.createEl("button", {
-      cls: "opencodian-send-btn",
-      text: "Send",
-    });
+    this.sendBtnEl = row.createEl("button", { cls: "opencodian-send-btn", text: "Send" });
 
     this.inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        this.handleSend();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.handleSend(); }
     });
-
     this.sendBtnEl.addEventListener("click", () => this.handleSend());
+
+    this.addWelcomeMessage();
   }
 
   addWelcomeMessage() {
     const el = this.messageContainerEl.createDiv({ cls: "opencodian-message opencodian-welcome" });
     const content = el.createDiv({ cls: "opencodian-message-content" });
-
     content.createEl("h2", { text: "Opencodian" });
-    content.createEl("p", { text: "Opencode AI agent running in your vault. Each message runs opencode as a subprocess." });
-
+    content.createEl("p", { text: "Connected to opencode via ACP. Type a message to start." });
     const ul = content.createEl("ul");
-    const tips = [
-      "Summarise the current note",
-      "Refactor this file",
-      "Find bugs in my code",
-    ];
-    for (const tip of tips) {
+    for (const tip of ["Summarise the current note", "Refactor this file", "Find bugs in my code"]) {
       const li = ul.createEl("li", { text: tip });
       li.addClass("opencodian-hint");
-      li.addEventListener("click", () => {
-        this.inputEl.value = tip;
-        this.inputEl.focus();
-      });
+      li.addEventListener("click", () => { this.inputEl.value = tip; this.inputEl.focus(); });
     }
   }
 
@@ -166,84 +168,42 @@ class OpencodianChatView extends ItemView {
     const text = this.inputEl.value.trim();
     if (!text) return;
 
-    if (!this.plugin.settings.opencodePath) {
-      new Notice("Please set the opencode CLI path in Settings → Opencodian");
+    if (!this.connected) {
+      new Notice("Not connected to opencode. Check Settings → Opencodian");
       return;
     }
 
     this.inputEl.value = "";
-    this.inputEl.style.height = "auto";
     this.sendBtnEl.setAttr("disabled", "true");
 
     this.addMessageBubble("user", text);
-    const assistantEl = this.addMessageBubble("assistant", "Running opencode...");
-    const contentEl = assistantEl.querySelector(".opencodian-message-content") as HTMLElement;
-
-    const vaultPath = this.plugin.getVaultPath();
-    if (!vaultPath) {
-      contentEl.setText("Error: could not resolve vault path");
-      this.sendBtnEl.removeAttribute("disabled");
-      return;
-    }
+    this.currentAssistantContent = "";
+    this.currentAssistantEl = this.addMessageBubble("assistant", "");
+    this.contentEl = this.currentAssistantEl.querySelector(".opencodian-message-content") as HTMLElement;
+    this.updateStatus("thinking...");
 
     const contextFile = this.app.workspace.getActiveFile();
     let prompt = text;
     if (contextFile) {
-      prompt = `(Current note: ${contextFile.path})\n\n${text}`;
+      let noteContent = "";
+      try { noteContent = await this.app.vault.read(contextFile); } catch {}
+      if (noteContent) {
+        prompt = `Current note (${contextFile.path}):\n\`\`\`\n${noteContent.slice(0, 2000)}\`\`\`\n\n---\n\n${text}`;
+      }
     }
 
-    const extra = this.plugin.settings.extraArgs
-      ? this.plugin.settings.extraArgs.split(/\s+/).filter(Boolean)
-      : [];
-
-    const args = ["run", "--pure", ...extra, "--", prompt];
-
-    const stripAnsi = (str: string) => str.replace(/\u001b\[\d+(;\d+)*m/g, "").replace(/\u001b\[\d+[A-Za-z]/g, "");
-
-    let output = "";
-
-    this.proc = spawn(this.plugin.settings.opencodePath, args, {
-      cwd: vaultPath,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    });
-
-    this.proc.stdout?.on("data", (data: Buffer) => {
-      output += stripAnsi(data.toString());
-      contentEl.setText(output.slice(-5000));
-      this.scrollToBottom();
-    });
-
-    this.proc.stderr?.on("data", (data: Buffer) => {
-      output += stripAnsi(data.toString());
-      contentEl.setText(output.slice(-5000));
-      this.scrollToBottom();
-    });
-
-    this.proc.on("error", (err) => {
-      contentEl.setText(`Failed to spawn opencode: ${err.message}\n\nCheck the path in Settings → Opencodian`);
-      this.sendBtnEl.removeAttribute("disabled");
-      this.proc = null;
-    });
-
-    this.proc.on("close", (code) => {
-      contentEl.setText(output || `(exit code ${code}, no output)`);
-      this.messages.push({ role: "user", content: text });
-      this.messages.push({ role: "assistant", content: output });
-      this.sendBtnEl.removeAttribute("disabled");
-      this.proc = null;
-      this.scrollToBottom();
-    });
+    try {
+      await this.conn.sendPrompt(prompt);
+    } catch (err: any) {
+      if (this.contentEl) this.contentEl.setText(`Error: ${err.message}`);
+      this.handleTurnDone();
+    }
   }
 
   addMessageBubble(role: string, content: string): HTMLElement {
-    const el = this.messageContainerEl.createDiv({
-      cls: `opencodian-message opencodian-${role}`,
-    });
-
+    const el = this.messageContainerEl.createDiv({ cls: `opencodian-message opencodian-${role}` });
     const contentEl = el.createDiv({ cls: "opencodian-message-content" });
     contentEl.setText(content);
-
     this.scrollToBottom();
     return el;
   }

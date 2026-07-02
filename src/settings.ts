@@ -25,7 +25,7 @@ export class OpencodianSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Opencode CLI path")
-      .setDesc("Path to the opencode binary (e.g. /usr/local/bin/opencode, or just 'opencode' if in PATH)")
+      .setDesc("Path to the opencode binary")
       .addText((text) =>
         text
           .setPlaceholder("opencode")
@@ -37,8 +37,8 @@ export class OpencodianSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Extra CLI arguments")
-      .setDesc("Optional flags passed to opencode (e.g. --model claude-sonnet-4-20250514)")
+      .setName("Extra ACP arguments")
+      .setDesc("Optional flags (e.g. --model provider/model)")
       .addText((text) =>
         text
           .setPlaceholder("--model claude-sonnet-4-20250514")

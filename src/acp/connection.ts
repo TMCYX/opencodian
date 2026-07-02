@@ -5,18 +5,10 @@ import { spawnOpencode, shutdownProcess } from "./subprocess";
 export type AcpMessageHandler = (text: string) => void;
 export type AcpStatusHandler = (status: string, data?: any) => void;
 
-export interface AcpCapabilities {
-  fs?: boolean;
-  terminal?: boolean;
-  auth?: boolean;
-  experimental?: Record<string, boolean>;
-}
-
 export class AcpConnection {
   private transport: JsonRpcTransport | null = null;
   private proc: ChildProcess | null = null;
   private sessionId: string | null = null;
-  private serverCapabilities: AcpCapabilities = {};
   private onAssistantText: AcpMessageHandler | null = null;
   private onStatus: AcpStatusHandler | null = null;
 
@@ -27,8 +19,18 @@ export class AcpConnection {
     this.proc = spawnOpencode(binPath, cwd, extraArgs);
     this.transport = new JsonRpcTransport(this.proc);
 
-    this.transport.onNotification("session/update", (params) => {
-      if (params.type === "message" && params.message?.role === "assistant") {
+    this.transport.onNotification("session/update", (params: any) => {
+      // text content blocks in assistant messages
+      if (params.update?.type === "message" && params.update.message?.role === "assistant") {
+        const blocks = params.update.message.content || [];
+        for (const block of blocks) {
+          if (block.type === "text" && block.text) {
+            this.onAssistantText?.(block.text);
+          }
+        }
+      }
+      // flattened message format
+      if (params.message?.role === "assistant") {
         const blocks = params.message.content || [];
         for (const block of blocks) {
           if (block.type === "text" && block.text) {
@@ -36,41 +38,39 @@ export class AcpConnection {
           }
         }
       }
-      if (params.type === "status") {
-        this.onStatus?.(params.status, params);
-      }
-      if (params.type === "turn" && params.turn?.status === "done") {
+      // turn completion
+      const update = params.update || params;
+      if (update.type === "turn" && update.turn?.status === "done") {
         this.onStatus?.("turn_done");
       }
     });
 
     const result = await this.transport.request("initialize", {
-      protocolVersion: "0.1.0",
+      protocolVersion: 1,
       capabilities: {},
       clientInfo: { name: "opencodian", version: "1.0.0" },
     });
-    this.serverCapabilities = result?.capabilities || {};
+    if (!result) throw new Error("initialize failed");
 
-    const session = await this.transport.request("newSession", {});
+    const session = await this.transport.request("session/new", { cwd, mcpServers: [] });
     this.sessionId = session?.sessionId || session?.id || null;
+    if (!this.sessionId) throw new Error("session/new: no sessionId returned");
   }
 
   async sendPrompt(prompt: string): Promise<void> {
     if (!this.transport || !this.sessionId) throw new Error("Not connected");
 
-    const promptMsg = {
+    const msg = {
       sessionId: this.sessionId,
-      prompt: {
-        blocks: [{ type: "text" as const, content: prompt }],
-      },
+      prompt: [{ type: "text", content: prompt }],
     };
 
-    await this.transport.request("prompt", promptMsg);
+    await this.transport.request("session/prompt", msg);
   }
 
   async cancel(): Promise<void> {
     if (!this.transport || !this.sessionId) return;
-    try { await this.transport.request("cancel", { sessionId: this.sessionId }); } catch {}
+    try { await this.transport.request("session/cancel", { sessionId: this.sessionId }); } catch {}
   }
 
   async stop(): Promise<void> {

@@ -97,6 +97,11 @@ class OpencodianChatView extends ItemView {
 
   handleStreamText(text: string) {
     if (!this.currentAssistantEl) return;
+    const thinkingEl = this.currentAssistantEl.querySelector(".opencodian-thinking") as HTMLElement;
+    if (thinkingEl?.isShown()) {
+      thinkingEl.hide();
+      this.updateStatus("receiving...");
+    }
     this.currentAssistantContent += text;
     if (this.contentEl) {
       this.contentEl.setText(this.currentAssistantContent);
@@ -180,7 +185,11 @@ class OpencodianChatView extends ItemView {
     this.currentAssistantContent = "";
     this.currentAssistantEl = this.addMessageBubble("assistant", "");
     this.contentEl = this.currentAssistantEl.querySelector(".opencodian-message-content") as HTMLElement;
-    this.updateStatus("thinking...");
+
+    const thinkingEl = this.currentAssistantEl.querySelector(".opencodian-thinking") as HTMLElement;
+    thinkingEl?.show();
+
+    this.updateStatus("waiting for opencode...");
 
     const contextFile = this.app.workspace.getActiveFile();
     let prompt = text;
@@ -202,6 +211,16 @@ class OpencodianChatView extends ItemView {
 
   addMessageBubble(role: string, content: string): HTMLElement {
     const el = this.messageContainerEl.createDiv({ cls: `opencodian-message opencodian-${role}` });
+    if (role === "assistant") {
+      const thinking = el.createDiv({ cls: "opencodian-thinking" });
+      thinking.hide();
+      // Build animated dots
+      const dots = thinking.createSpan({ cls: "opencodian-thinking-dots" });
+      for (let i = 0; i < 3; i++) {
+        dots.createSpan({ cls: "opencodian-dot" });
+      }
+      const label = thinking.createSpan({ cls: "opencodian-thinking-label", text: "thinking" });
+    }
     const contentEl = el.createDiv({ cls: "opencodian-message-content" });
     contentEl.setText(content);
     this.scrollToBottom();

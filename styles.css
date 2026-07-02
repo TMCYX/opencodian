@@ -65,6 +65,43 @@
   margin: 12px 0 0 0;
 }
 
+.opencodian-thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  margin-bottom: 4px;
+}
+
+.opencodian-thinking-label {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.opencodian-thinking-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.opencodian-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: opencodian-bounce 1.4s ease-in-out infinite both;
+}
+
+.opencodian-dot:nth-child(1) { animation-delay: -0.32s; }
+.opencodian-dot:nth-child(2) { animation-delay: -0.16s; }
+.opencodian-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes opencodian-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
 .opencodian-hint {
   padding: 6px 12px;
   margin: 4px 0;
